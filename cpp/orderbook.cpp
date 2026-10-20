@@ -1,17 +1,17 @@
 #include <iostream>
 #include <map>
-#include <chrono>
-#include <numeric>
 
-// Livro de Ordens L2 otimizado
-// Asks: menor preço primeiro (std::less)
-// Bids: maior preço primeiro (std::greater)
 class OrderBook {
 private:
-    std::map<double, double, std::greater<double>> bids; // Price -> Volume
-    std::map<double, double> asks;                       // Price -> Volume
+    std::map<double, double, std::greater<double>> bids;
+    std::map<double, double> asks;
 
 public:
+    void clear() {
+        bids.clear();
+        asks.clear();
+    }
+
     void update_bid(double price, double volume) {
         if (volume == 0.0) bids.erase(price);
         else bids[price] = volume;
@@ -22,7 +22,6 @@ public:
         else asks[price] = volume;
     }
 
-    // Cálculo da métrica de Imbalance: (Vol_Bid - Vol_Ask) / (Vol_Bid + Vol_Ask)
     double calculate_imbalance() const {
         if (bids.empty() || asks.empty()) return 0.0;
 
@@ -35,33 +34,35 @@ public:
         return (top_bid_vol - top_ask_vol) / total_vol;
     }
 
-    void print_top_of_book() const {
-        if (!bids.empty() && !asks.empty()) {
-            std::cout << "[CPP Engine] Best Bid: $" << bids.begin()->first 
-                      << " | Best Ask: $" << asks.begin()->first 
-                      << " | Imbalance: " << calculate_imbalance() << "\n";
-        }
+    void get_top_of_book(double& best_bid, double& best_ask) const {
+        best_bid = bids.empty() ? 0.0 : bids.begin()->first;
+        best_ask = asks.empty() ? 0.0 : asks.begin()->first;
     }
 };
 
-int main() {
-    OrderBook book;
+static OrderBook g_orderbook;
 
-    // Medição de latência com std::chrono (alta precisão)
-    auto start = std::chrono::high_resolution_clock::now();
+extern "C" {
+    __declspec(dllexport) void cpp_clear() {
+        g_orderbook.clear();
+    }
 
-    // Simulação de atualizações de alta frequência
-    book.update_bid(82050.0, 1.5);
-    book.update_bid(82049.5, 2.0);
-    book.update_ask(82051.0, 0.8);
-    book.update_ask(82051.5, 3.1);
+    __declspec(dllexport) void cpp_update_bid(double price, double volume) {
+        g_orderbook.update_bid(price, volume);
+    }
 
-    auto end = std::chrono::high_resolution_clock::now();
-    auto elapsed_nanos = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+    __declspec(dllexport) void cpp_update_ask(double price, double volume) {
+        g_orderbook.update_ask(price, volume);
+    }
 
-    book.print_top_of_book();
-    std::cout << "[Benchmark] Processing Latency: " << elapsed_nanos << " ns (" 
-              << elapsed_nanos / 1000.0 << " us)\n";
+    __declspec(dllexport) double cpp_get_imbalance() {
+        return g_orderbook.calculate_imbalance();
+    }
 
-    return 0;
+    __declspec(dllexport) void cpp_get_top_of_book(double* best_bid, double* best_ask) {
+        double bid = 0.0, ask = 0.0;
+        g_orderbook.get_top_of_book(bid, ask);
+        *best_bid = bid;
+        *best_ask = ask;
+    }
 }
